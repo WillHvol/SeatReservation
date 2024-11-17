@@ -1,4 +1,5 @@
 # coding=utf-8
+import json
 
 # Created by Deserts
 # email: i@panjunwen.com
@@ -11,9 +12,31 @@ from bs4 import BeautifulSoup
 import re
 import random
 import datetime
-from captcha import captcha
+import base64
+# from captcha import captcha
+from ocr import captcha
+import DecodeAndEncode
 
-
+header = {
+    "accept":"application/json, text/plain, */*",
+    "accept-encoding":"gzip, deflate, br, zstd",
+    "accept-language":"zh-CN,zh;q=0.9,en;q=0.8",
+    "authorization":"",
+    "connection":"keep-alive",
+    "host":"seat.ujn.edu.cn",
+    "logintype":"PC",
+    "referer":"https://seat.ujn.edu.cn/libseat/",
+    "sec-ch-ua":'"Chromium";v="130", "Google Chrome";v="130", "Not?A_Brand";v="99"',
+    "sec-ch-ua-mobile":"?0",
+    "sec-ch-ua-platform":'"Windows"',
+    "sec-fetch-dest":"empty",
+    "sec-fetch-mode":"cors",
+    "sec-fetch-site":"same-origin",
+    "user-agent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36",
+    "x-hmac-request-key":"",
+    "x-request-date":"",
+    "x-request-id":""
+}
 class SeatReservation(object):
     """ Seat class:
         @ param url: Leosys' URL, e.g.http://202.206.242.87/, notice the "/"
@@ -24,9 +47,11 @@ class SeatReservation(object):
     """
     def __init__(self, url):
         self.url = url
-        self.session = requests.session()
+        self.session = requests.Session()
+        self.session.headers.update(header)
         self.reserveStatus = False
         self.date = self.getDate()
+        self.token = ""
 
     def login(self, username=None, password=None):
         '''
@@ -42,28 +67,59 @@ class SeatReservation(object):
             self.userInfo = {
                 "username": username,
                 "password": password,
-                "captcha": ""
+                "captchaId": "",
+                "answer": ""
             }
-        captchaUrl = self.url + "simpleCaptcha/captcha"
-        loginUrl = self.url + "auth/signIn"
+        captchaUrl = self.url + "auth/createCaptcha"
+        loginUrl = self.url + "rest/auth"
         while True:
             try:
                 captchaImg = self.session.get(captchaUrl)
-                self.userInfo["captcha"] = captcha(captchaImg.content)
-                res = self.session.post(url=loginUrl, data=self.userInfo)
-            except requests.exceptions.ConnectionError, e:
-                print e
+                decodedImg = captchaImg.content.decode('utf-8')
+                jsonImg = json.loads(decodedImg)
+                self.userInfo["captchaId"] = jsonImg["captchaId"]
+                base64_data = jsonImg["captchaImage"]
+                image_data = base64.b64decode(base64_data.split(",")[1])
+                with open("output.png", "wb") as file:
+                    file.write(image_data)
+                self.userInfo["answer"] = captcha(base64_data)
+                decrypt = DecodeAndEncode.getKey("get")
+                header["x-hmac-request-key"]=decrypt["requestKey"]
+                header["x-request-date"]=str(decrypt["date"])
+                header["x-request-id"]=decrypt["id"]
+
+                print(self.session.headers)
+                res = requests.get(url=loginUrl, params=self.userInfo, headers=header)
+
+            except requests.exceptions.ConnectionError as e:
+                print (e)
                 return -1
-            if self.loginStatusCheck(res):
+            resText = json.loads(res.text)
+            status = resText["status"]
+            if status=="success":
+                header["authorization"] = resText["data"]["token"]
+                self.token = resText["data"]["token"]
+                res = self.getCaptcha()
+                capJson = json.loads(res.text)
+                if(capJson["status"]=="OK"):
+                    capToken = capJson["token"]
+                    capImage = capJson["image"]
+                    capWordImage = capJson["wordImage"]
+                    capWordCount = capJson["wordCheckCount"]
+                    capImageData = base64.b64decode(capImage.split(",")[1])
+                    capWordImageData = base64.b64decode(capWordImage.split(",")[1])
+                    with open("capImage.png", "wb") as file:
+                        file.write(capImageData)
+                    with open("capWordImage.png", "wb") as file:
+                        file.write(capWordImageData)
                 return 0
-            msg = re.findall('showmsg."(.*)",', res.text)
-            if msg:
-                msg = msg[0]
-                print msg
-                if msg == u"登录失败: 用户不存在":
-                    return 1
-                elif msg == u"登录失败: 密码不正确":
-                    return 2
+            # msg = re.findall('showmsg."(.*)",', res.text)
+            else:
+                code = resText["code"]
+                if code == "31":
+                    continue
+        #     其他code情况
+
         return -1
 
     def loginStatusCheck(self, response=None):
@@ -72,7 +128,19 @@ class SeatReservation(object):
         '''
         if response is None:
             response = self.session.get(self.url)
-        return response.text[1] != "!"
+        text = json.loads(response.text)
+        return text["status"] != "fail"
+
+    def getCaptcha(self):
+        url = "https://seat.ujn.edu.cn/cap/captcha/" + self.token
+        params = {
+            "username": self.userInfo["username"]
+        }
+        res = requests.post(url, params)
+        return res
+
+    # def checkCaptcha(self):
+
 
     def reserve(self, seat, start, end):
         '''
@@ -102,7 +170,7 @@ class SeatReservation(object):
             info = soup.dd.text
         except:
             info = None
-        print "post data: ", seatInfo
+        print ("post data: ", seatInfo)
         # deal with the response
         infoSlice = info[6:13]
         if info[:3] == u"凭证号" or infoSlice == u"已有1个有效预":

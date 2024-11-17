@@ -11,8 +11,8 @@ class YsuWireless(object):
     def connect(self):
         try:
             res = self.s.post(url=self.URL, data=self.data)
-        except Exception, e:
-            print e
+        except Exception as e:
+            print(e)
             return -1
         if re.findall("<S.+\S", res.text):
             return 1
@@ -21,7 +21,7 @@ class YsuWireless(object):
 
     def flux(self):
         res = self.s.get(url=self.URL)
-        usedFlux = re.findall("flow='(\d+)", res.text)[0]
+        usedFlux = re.findall(r"flow='(\d+)", res.text)[0]
         usedFlux = float(usedFlux) / (1024.0 * 1024.0)
         flux = 4.0 - usedFlux
         return "%.2f GB" % flux

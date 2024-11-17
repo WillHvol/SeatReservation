@@ -5,10 +5,10 @@
 # site: https://panjunwen.com/
 # date: 2016-08-19
 
-from Tkinter import *
+from tkinter import *
 from threading import Thread
 import datetime
-import ConfigParser
+import configparser
 from Seat import *
 from ysuWlan import *
 
@@ -98,7 +98,7 @@ class SeatReservationGUI(object):
 
     def etcetera(self):
         # read configs
-        conf = ConfigParser.ConfigParser()
+        conf = configparser.ConfigParser()
         conf.read("config.ini")
         schedTm = conf.get("other", "schedule")
         url = conf.get("other", "url")
@@ -109,7 +109,7 @@ class SeatReservationGUI(object):
         start = conf.get("seat", "start")
         end = conf.get("seat", "end")
         schedTm = int(schedTm)
-        schedH = schedTm / 60
+        schedH = int(schedTm / 60)
         schedM = schedTm % 60
         now = datetime.datetime.now()
         self.schedtime = datetime.datetime(now.year, now.month,
@@ -176,13 +176,13 @@ class SeatReservationGUI(object):
             start = 0
             self.text.insert(END, '错误：确保时间范围为7:00 ~ 23:00\n')
         if start and end and seatID:
-            conf = ConfigParser.ConfigParser()
+            conf = configparser.ConfigParser()
             conf.read("config.ini")
             conf.set("seat", "room", room)
             conf.set("seat", "seat", seat)
             conf.set("seat", "start", str(start / 60))
             conf.set("seat", "end", str(end / 60))
-            conf = ConfigParser.ConfigParser()
+            conf = configparser.ConfigParser()
             conf.read("config.ini")
             conf.set("user", "username", self.username.get())
             conf.set("user", "password", self.password.get())
